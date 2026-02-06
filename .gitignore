@@ -1,0 +1,20 @@
+# Data
+data/raw/
+data/processed/
+LibriSpeech/
+GTZAN/
+
+# Models
+models/*.pt
+models/*.pth
+
+# Python
+__pycache__/
+*.pyc
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+venv/

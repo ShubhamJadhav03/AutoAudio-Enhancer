@@ -1,0 +1,10 @@
+numpy
+pandas
+librosa
+soundfile
+scipy
+pydub
+sounddevice
+torch
+pedalboard
+yt-dlp
