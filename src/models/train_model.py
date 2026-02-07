@@ -13,38 +13,7 @@ from torch.utils.data import TensorDataset, DataLoader
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, PROJECT_ROOT)
 
-# --- SETUP ---
-PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data/processed")
-MODEL_DIR = os.path.join(PROJECT_ROOT, "models")
-os.makedirs(MODEL_DIR, exist_ok=True)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f" Training on: {device}")
-
-# --- DATA LOADING ---
-X = np.load(os.path.join(PROCESSED_DIR, "X.npy"))
-y = np.load(os.path.join(PROCESSED_DIR, "y.npy"))
-
-label_encoder = LabelEncoder()
-y_encoded = label_encoder.fit_transform(y)
-np.save(os.path.join(MODEL_DIR, "label_encoder.npy"), label_encoder.classes_)
-
-# Reshape for CNN: (N, 1, 40, 130)
-X = X[:, np.newaxis, :, :]
-
-# Tensors
-X_tensor = torch.tensor(X, dtype=torch.float32)
-y_tensor = torch.tensor(y_encoded, dtype=torch.long)
-
-# Split
-X_train, X_test, y_train, y_test = train_test_split(
-    X_tensor, y_tensor, test_size=0.2, random_state=42, stratify=y_tensor
-)
-
-# Dataloaders (Increased batch size to 32 for stability)
-train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
-test_loader = DataLoader(TensorDataset(X_test, y_test), batch_size=32)
-
-# --- THE ADVANCED MODEL ---
+# --- DEFINE THE CLASS AT THE TOP (Global) ---
 class AudioCNN_Pro(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
@@ -95,52 +64,90 @@ class AudioCNN_Pro(nn.Module):
         x = self.fc(x)
         return x
 
-# --- TRAINING ---
-model = AudioCNN_Pro(len(label_encoder.classes_)).to(device)
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+# --- THE GATEKEEPER ---
+if __name__ == "__main__":
+    # ⚠️ INDENT EVERYTHING BELOW THIS LINE
+    
+    print("⚔️ Starting Training Mode...")
+    
+    # --- SETUP ---
+    PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data/processed")
+    MODEL_DIR = os.path.join(PROJECT_ROOT, "models")
+    os.makedirs(MODEL_DIR, exist_ok=True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f" Training on: {device}")
 
-EPOCHS = 25 
+    # --- DATA LOADING ---
+    X = np.load(os.path.join(PROCESSED_DIR, "X.npy"))
+    y = np.load(os.path.join(PROCESSED_DIR, "y.npy"))
 
-print(" Starting Training...")
-for epoch in range(EPOCHS):
-    model.train()
-    running_loss = 0.0
+    label_encoder = LabelEncoder()
+    y_encoded = label_encoder.fit_transform(y)
+    np.save(os.path.join(MODEL_DIR, "label_encoder.npy"), label_encoder.classes_)
+
+    # Reshape for CNN: (N, 1, 40, 130)
+    X = X[:, np.newaxis, :, :]
+
+    # Tensors
+    X_tensor = torch.tensor(X, dtype=torch.float32)
+    y_tensor = torch.tensor(y_encoded, dtype=torch.long)
+
+    # Split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_tensor, y_tensor, test_size=0.2, random_state=42, stratify=y_tensor
+    )
+
+    # Dataloaders (Increased batch size to 32 for stability)
+    train_loader = DataLoader(TensorDataset(X_train, y_train), batch_size=32, shuffle=True)
+    test_loader = DataLoader(TensorDataset(X_test, y_test), batch_size=32)
+
+    # --- TRAINING ---
+    model = AudioCNN_Pro(len(label_encoder.classes_)).to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    EPOCHS = 25 
+
+    print(" Starting Training...")
+    for epoch in range(EPOCHS):
+        model.train()
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            
+            optimizer.zero_grad()
+            outputs = model(xb)
+            loss = criterion(outputs, yb)
+            loss.backward()
+            optimizer.step()
+            
+            running_loss += loss.item()
+            
+            # Track training accuracy to spot overfitting
+            _, predicted = torch.max(outputs.data, 1)
+            total += yb.size(0)
+            correct += (predicted == yb).sum().item()
+
+        train_acc = 100 * correct / total
+        print(f"Epoch [{epoch+1}/{EPOCHS}] - Loss: {running_loss/len(train_loader):.4f} - Train Acc: {train_acc:.2f}%")
+
+    # --- EVALUATION ---
+    model.eval()
     correct = 0
     total = 0
-    
-    for xb, yb in train_loader:
-        xb, yb = xb.to(device), yb.to(device)
-        
-        optimizer.zero_grad()
-        outputs = model(xb)
-        loss = criterion(outputs, yb)
-        loss.backward()
-        optimizer.step()
-        
-        running_loss += loss.item()
-        
-        # Track training accuracy to spot overfitting
-        _, predicted = torch.max(outputs.data, 1)
-        total += yb.size(0)
-        correct += (predicted == yb).sum().item()
+    with torch.no_grad():
+        for xb, yb in test_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            outputs = model(xb)
+            _, predicted = torch.max(outputs, 1)
+            total += yb.size(0)
+            correct += (predicted == yb).sum().item()
 
-    train_acc = 100 * correct / total
-    print(f"Epoch [{epoch+1}/{EPOCHS}] - Loss: {running_loss/len(train_loader):.4f} - Train Acc: {train_acc:.2f}%")
+    accuracy = 100 * correct / total
+    print(f"\n Final Test Accuracy: {accuracy:.2f}%")
 
-# --- EVALUATION ---
-model.eval()
-correct = 0
-total = 0
-with torch.no_grad():
-    for xb, yb in test_loader:
-        xb, yb = xb.to(device), yb.to(device)
-        outputs = model(xb)
-        _, predicted = torch.max(outputs, 1)
-        total += yb.size(0)
-        correct += (predicted == yb).sum().item()
-
-accuracy = 100 * correct / total
-print(f"\n Final Test Accuracy: {accuracy:.2f}%")
-
-torch.save(model.state_dict(), os.path.join(MODEL_DIR, "audio_cnn.pth"))
+    torch.save(model.state_dict(), os.path.join(MODEL_DIR, "audio_cnn.pth"))
+    print("💾 Model Saved.")

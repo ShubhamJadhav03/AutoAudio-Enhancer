@@ -18,4 +18,10 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Virtual Environment
 venv/
+
+# Build
+build/
+dist/
+AutoAudio.spec
