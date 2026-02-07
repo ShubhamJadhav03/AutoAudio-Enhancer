@@ -3,7 +3,7 @@ data/raw/
 data/processed/
 LibriSpeech/
 GTZAN/
-datasets/dev-clean/
+datasets/
 
 # Models
 models/*.pt
